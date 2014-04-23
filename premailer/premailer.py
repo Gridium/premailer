@@ -49,42 +49,39 @@ def merge_styles(old, new, class_=''):
         for key in parsed:
             yield (key, parsed.getVariableValue(key))
 
-    new_keys = set()
-    news = []
+    news = {}
     for k, v in csstext_to_pairs(new):
-        news.append((k.strip(), v.strip()))
-        new_keys.add(k.strip())
+        news[k.strip()] = v.strip()
 
     groups = {}
     grouped_split = grouping_regex.findall(old)
     if grouped_split:
         for old_class, old_content in grouped_split:
-            olds = []
+            olds = {}
             for k, v in csstext_to_pairs(old_content):
-                olds.append((k.strip(), v.strip()))
+                olds[k.strip()] = v.strip()
             groups[old_class] = olds
     else:
-        olds = []
+        olds = {}
         for k, v in csstext_to_pairs(old):
-            olds.append((k.strip(), v.strip()))
+            olds[k.strip()] = v.strip()
         groups[''] = olds
 
     # Perform the merge
     relevant_olds = groups.get(class_, {})
-    merged = [style for style in relevant_olds if style[0] not in new_keys] + news
+    relevant_olds.update(news)
+    merged = relevant_olds
     groups[class_] = merged
 
     if len(groups) == 1:
-        return '; '.join('%s:%s' % (k, v) for
-                          (k, v) in sorted(list(groups.values())[0]))
+        group = next(iter(groups.values())).items()
+        return '; '.join('%s:%s' % (k, v) for (k, v) in sorted(group))
     else:
         all = []
         for class_, mergeable in sorted(list(groups.items()),
                                         key=lambda x: x[0].count(':')):
-            all.append('%s{%s}' % (class_,
-                                   '; '.join('%s:%s' % (k, v)
-                                              for (k, v)
-                                              in mergeable)))
+            styles = '; '.join('%s:%s' % (k, v) for (k, v) in mergeable.items())
+            all.append('%s{%s}' % (class_, styles))
         return ' '.join(x for x in all if x != '{}')
 
 
