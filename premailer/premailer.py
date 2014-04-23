@@ -79,8 +79,7 @@ def merge_styles(old, new, class_=''):
     else:
         all = []
         for class_, mergeable in sorted(list(groups.items()),
-                                        lambda x, y: cmp(x[0].count(':'),
-                                                         y[0].count(':'))):
+                                        key=lambda x: x[0].count(':')):
             all.append('%s{%s}' % (class_,
                                    '; '.join('%s:%s' % (k, v)
                                               for (k, v)
