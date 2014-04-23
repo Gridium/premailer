@@ -12,6 +12,7 @@ import urllib.request, urllib.error, urllib.parse
 import urllib.parse
 
 import cssutils
+cssutils.css.CSSComment.style = cssutils.css.cssstyledeclaration.CSSStyleDeclaration()
 from lxml import etree
 from lxml.cssselect import CSSSelector
 
