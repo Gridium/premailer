@@ -152,15 +152,12 @@ class Premailer(object):
                 '{0}:{1}'.format(key, rule.style[key])
                 for key in list(rule.style.keys())
             )
-            selectors = (
-                x.strip()
-                for x in rule.selectorText.split(',')
-                if x.strip() and not x.strip().startswith('@')
-            )
-            for selector in selectors:
+            for selector in rule.selectorText.split(','):
+                selector = selector.strip()
+                if not selector or selector.startswith('@'):
+                    continue
                 if (':' in selector and self.exclude_pseudoclasses and
-                    ':' + selector.split(':', 1)[1]
-                        not in FILTER_PSEUDOSELECTORS):
+                    ':' + selector.split(':', 1)[1] not in FILTER_PSEUDOSELECTORS):
                     # a pseudoclass
                     leftover.append((selector, bulk))
                     continue
@@ -195,7 +192,6 @@ class Premailer(object):
         root = tree if stripped.startswith(tree.docinfo.doctype) else page
 
         if page is None:
-            print(repr(self.html))
             raise PremailerError("Could not parse the html")
         assert page is not None
 
