@@ -1,15 +1,15 @@
 try:
-    import cStringIO as StringIO
+    import io as StringIO
 except ImportError:
-    import StringIO
+    import io
 import cgi
 import codecs
 import gzip
 import operator
 import os
 import re
-import urllib2
-import urlparse
+import urllib.request, urllib.error, urllib.parse
+import urllib.parse
 
 import cssutils
 from lxml import etree
@@ -75,10 +75,10 @@ def merge_styles(old, new, class_=''):
 
     if len(groups) == 1:
         return '; '.join('%s:%s' % (k, v) for
-                          (k, v) in sorted(groups.values()[0]))
+                          (k, v) in sorted(list(groups.values())[0]))
     else:
         all = []
-        for class_, mergeable in sorted(groups.items(),
+        for class_, mergeable in sorted(list(groups.items()),
                                         lambda x, y: cmp(x[0].count(':'),
                                                          y[0].count(':'))):
             all.append('%s{%s}' % (class_,
@@ -125,7 +125,7 @@ class Premailer(object):
         self.remove_classes = remove_classes
         # whether to process or ignore selectors like '* { foo:bar; }'
         self.include_star_selectors = include_star_selectors
-        if isinstance(external_styles, basestring):
+        if isinstance(external_styles, str):
             external_styles = [external_styles]
         self.external_styles = external_styles
         self.strip_important = strip_important
@@ -152,8 +152,8 @@ class Premailer(object):
                 leftover.append(rule)
                 continue
             bulk = ';'.join(
-                u'{0}:{1}'.format(key, rule.style[key])
-                for key in rule.style.keys()
+                '{0}:{1}'.format(key, rule.style[key])
+                for key in list(rule.style.keys())
             )
             selectors = (
                 x.strip()
@@ -198,7 +198,7 @@ class Premailer(object):
         root = tree if stripped.startswith(tree.docinfo.doctype) else page
 
         if page is None:
-            print repr(self.html)
+            print(repr(self.html))
             raise PremailerError("Could not parse the html")
         assert page is not None
 
@@ -245,7 +245,7 @@ class Premailer(object):
                     # media rule
                     else:
                         for rule in item.cssRules:
-                            for key in rule.style.keys():
+                            for key in list(rule.style.keys()):
                                 rule.style[key] = (rule.style.getPropertyValue(key, False), '!important')
                         lines.append(item.cssText)
                 style.text = '\n'.join(lines)
@@ -324,12 +324,12 @@ class Premailer(object):
                         continue
                     if not self.base_url.endswith('/'):
                         self.base_url += '/'
-                    parent.attrib[attr] = urlparse.urljoin(self.base_url,
+                    parent.attrib[attr] = urllib.parse.urljoin(self.base_url,
                         parent.attrib[attr].lstrip('/'))
 
         kwargs.setdefault('method', self.method)
         kwargs.setdefault('pretty_print', pretty_print)
-        out = etree.tostring(root, **kwargs)
+        out = etree.tostring(root, **kwargs).decode('utf-8')
         if self.method == 'xml':
             out = _cdata_regex.sub(lambda m: '/*<![CDATA[*/%s/*]]>*/' % m.group(1), out)
         if self.strip_important:
@@ -337,11 +337,11 @@ class Premailer(object):
         return out
 
     def _load_external_url(self, url):
-        r = urllib2.urlopen(url)
+        r = urllib.request.urlopen(url)
         _, params = cgi.parse_header(r.headers.get('Content-Type', ''))
         encoding = params.get('charset', 'utf-8')
         if 'gzip' in r.info().get('Content-Encoding', ''):
-            buf = StringIO.StringIO(r.read())
+            buf = io.StringIO(r.read())
             f = gzip.GzipFile(fileobj=buf)
             out = f.read().decode(encoding)
         else:
@@ -370,10 +370,10 @@ class Premailer(object):
                 with codecs.open(stylefile, encoding='utf-8') as f:
                     css_body = f.read()
             elif self.base_url:
-                url = urlparse.urljoin(self.base_url, url)
+                url = urllib.parse.urljoin(self.base_url, url)
                 return self._load_external(url)
             else:
-                raise ValueError(u"Could not find external style: %s" %
+                raise ValueError("Could not find external style: %s" %
                                  stylefile)
         return css_body
 
@@ -408,7 +408,7 @@ class Premailer(object):
             #    print "key", repr(key)
             #    print 'value', repr(value)
 
-        for key, value in attributes.items():
+        for key, value in list(attributes.items()):
             if key in element.attrib and not force or key in self.disable_basic_attributes:
                 # already set, don't dare to overwrite
                 continue
@@ -439,4 +439,4 @@ if __name__ == '__main__':
         </body>
         </html>"""
     p = Premailer(html)
-    print p.transform()
+    print(p.transform())

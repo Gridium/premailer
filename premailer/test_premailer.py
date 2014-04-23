@@ -1,13 +1,13 @@
 import sys
 import re
 from contextlib import contextmanager
-from StringIO import StringIO
+from io import StringIO
 import gzip
 
 from nose.tools import eq_, ok_
 import mock
 
-from premailer import Premailer, etree, merge_styles
+from .premailer import Premailer, etree, merge_styles
 from .__main__ import main
 
 
@@ -1568,7 +1568,7 @@ def test_external_styles_on_http(urllib2):
             return MockResponse(
                 "h3 { color: red }", gzip=True
             )
-    urllib2.urlopen = mocked_urlopen
+    urllib.request.urlopen = mocked_urlopen
 
     p = Premailer(html)
     result_html = p.transform()
@@ -1608,7 +1608,7 @@ def test_external_styles_with_base_url(urllib2):
             )
         raise NotImplementedError(url)
 
-    urllib2.urlopen = mocked_urlopen
+    urllib.request.urlopen = mocked_urlopen
 
     p = Premailer(
         html,

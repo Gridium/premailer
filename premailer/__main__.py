@@ -1,7 +1,7 @@
 import sys
 import argparse
 
-from premailer import Premailer
+from .premailer import Premailer
 
 
 def main(args):
