@@ -384,9 +384,12 @@ class Premailer(object):
             style_content = style_content.split('}')[0][1:]
 
         attributes = {}
-        for key, value in [x.split(':') for x in style_content.split(';')
-                           if len(x.split(':')) == 2]:
-            key = key.strip()
+        for rule in style_content.split(';'):
+            split = rule.split(':')
+            if len(split) != 2:
+                continue
+            key = split[0].strip()
+            value = split[1]
 
             if key == 'text-align':
                 attributes['align'] = value.strip()
@@ -397,9 +400,6 @@ class Premailer(object):
                 if value.endswith('px'):
                     value = value[:-2]
                 attributes[key] = value
-            #else:
-            #    print "key", repr(key)
-            #    print 'value', repr(value)
 
         for key, value in list(attributes.items()):
             if key in element.attrib and not force or key in self.disable_basic_attributes:
