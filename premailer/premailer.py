@@ -4,6 +4,7 @@ except ImportError:
     import io
 import cgi
 import codecs
+import functools
 import gzip
 import operator
 import os
@@ -26,6 +27,7 @@ class PremailerError(Exception):
 grouping_regex = re.compile('([:\-\w]*){([^}]+)}')
 
 
+@functools.lru_cache(maxsize=256)
 def merge_styles(old, new, class_=''):
     """
     if ::
