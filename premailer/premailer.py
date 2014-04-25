@@ -8,8 +8,7 @@ import gzip
 import operator
 import os
 import re
-import urllib.request, urllib.error, urllib.parse
-import urllib.parse
+import urllib.request, urllib.parse
 
 import cssutils
 cssutils.css.CSSComment.style = cssutils.css.cssstyledeclaration.CSSStyleDeclaration()
@@ -136,21 +135,18 @@ class Premailer(object):
         leftover = []
         rules = []
         rule_index = 0
-        # empty string
         if not css_body:
             return rules, leftover
         sheet = cssutils.parseString(css_body)
         for rule in sheet:
-            # ignore comment
             if rule.type == rule.COMMENT:
                 continue
-            # handle media rule
             if rule.type == rule.MEDIA_RULE:
                 leftover.append(rule)
                 continue
             bulk = ';'.join(
-                '{0}:{1}'.format(key, rule.style[key])
-                for key in list(rule.style.keys())
+                '{0}:{1}'.format(s.name, s.value)
+                for s in rule.style
             )
             for selector in rule.selectorText.split(','):
                 selector = selector.strip()
@@ -176,32 +172,30 @@ class Premailer(object):
 
         return rules, leftover
 
-    def transform(self, pretty_print=True, **kwargs):
-        """change the self.html and return it with CSS turned into style
-        attributes.
-        """
-        if etree is None:
-            return self.html
+    def transform(self, **kwargs):
+        """ change the self.html and return it with CSS turned into style attributes. """
 
         parser = etree.HTMLParser()
         stripped = self.html.strip()
         tree = etree.fromstring(stripped, parser).getroottree()
         page = tree.getroot()
-        # lxml inserts a doctype if none exists, so only include it in
-        # the root if it was in the original html.
-        root = tree if stripped.startswith(tree.docinfo.doctype) else page
 
         if page is None:
             raise PremailerError("Could not parse the html")
-        assert page is not None
 
-        ##
-        ## style selectors
-        ##
+        rules = self._parse_selectors(page)
+        first_time_styles = self._apply_classes(page, rules)
+        self._reapply_initial_styles(first_time_styles)
+        if self.remove_classes:
+            self._remove_classes(page)
+        if self.base_url:
+            self._rewrite_urls(page)
 
+        return self._output(stripped, tree, page, **kwargs)
+
+    def _parse_selectors(self, page):
         rules = []
         index = 0
-
         for element in CSSSelector('style,link[rel~=stylesheet]')(page):
             # If we have a media attribute whose value is anything other than
             # 'screen', ignore the ruleset.
@@ -258,76 +252,7 @@ class Premailer(object):
                 these_rules, these_leftover = self._parse_style_rules(css_body, index)
                 index += 1
                 rules.extend(these_rules)
-
-        # rules is a tuple of (specificity, selector, styles), where specificity is a tuple
-        # ordered such that more specific rules sort larger.
-        rules.sort(key=operator.itemgetter(0))
-
-        first_time = []
-        first_time_styles = []
-        for __, selector, style in rules:
-            new_selector = selector
-            class_ = ''
-            if ':' in selector:
-                new_selector, class_ = re.split(':', selector, 1)
-                class_ = ':%s' % class_
-            # Keep filter-type selectors untouched.
-            if class_ in FILTER_PSEUDOSELECTORS:
-                class_ = ''
-            else:
-                selector = new_selector
-
-            sel = CSSSelector(selector)
-            for item in sel(page):
-                old_style = item.attrib.get('style', '')
-                if not item in first_time:
-                    new_style = merge_styles(old_style, style, class_)
-                    first_time.append(item)
-                    first_time_styles.append((item, old_style))
-                else:
-                    new_style = merge_styles(old_style, style, class_)
-                item.attrib['style'] = new_style
-                self._style_to_basic_html_attributes(item, new_style,
-                                                     force=True)
-
-        # Re-apply initial inline styles.
-        for item, inline_style in first_time_styles:
-            old_style = item.attrib.get('style', '')
-            if not inline_style:
-                continue
-            new_style = merge_styles(old_style, inline_style, class_)
-            item.attrib['style'] = new_style
-            self._style_to_basic_html_attributes(item, new_style, force=True)
-
-        if self.remove_classes:
-            # now we can delete all 'class' attributes
-            for item in page.xpath('//@class'):
-                parent = item.getparent()
-                del parent.attrib['class']
-
-        ##
-        ## URLs
-        ##
-        if self.base_url:
-            for attr in ('href', 'src'):
-                for item in page.xpath("//@%s" % attr):
-                    parent = item.getparent()
-                    if attr == 'href' and self.preserve_internal_links \
-                           and parent.attrib[attr].startswith('#'):
-                        continue
-                    if not self.base_url.endswith('/'):
-                        self.base_url += '/'
-                    parent.attrib[attr] = urllib.parse.urljoin(self.base_url,
-                        parent.attrib[attr].lstrip('/'))
-
-        kwargs.setdefault('method', self.method)
-        kwargs.setdefault('pretty_print', pretty_print)
-        out = etree.tostring(root, **kwargs).decode('utf-8')
-        if self.method == 'xml':
-            out = _cdata_regex.sub(lambda m: '/*<![CDATA[*/%s/*]]>*/' % m.group(1), out)
-        if self.strip_important:
-            out = _importants.sub('', out)
-        return out
+        return rules
 
     def _load_external_url(self, url):
         r = urllib.request.urlopen(url)
@@ -370,6 +295,48 @@ class Premailer(object):
                                  stylefile)
         return css_body
 
+    def _apply_classes(self, page, rules):
+        # rules is a tuple of (specificity, selector, styles), where specificity is a tuple
+        # ordered such that more specific rules sort larger.
+        rules.sort(key=operator.itemgetter(0))
+
+        first_time = []
+        first_time_styles = []
+        for __, selector, style in rules:
+            new_selector = selector
+            class_ = ''
+            if ':' in selector:
+                new_selector, class_ = re.split(':', selector, 1)
+                class_ = ':%s' % class_
+            # Keep filter-type selectors untouched.
+            if class_ in FILTER_PSEUDOSELECTORS:
+                class_ = ''
+            else:
+                selector = new_selector
+
+            sel = CSSSelector(selector)
+            for item in sel(page):
+                old_style = item.attrib.get('style', '')
+                if not item in first_time:
+                    new_style = merge_styles(old_style, style, class_)
+                    first_time.append(item)
+                    first_time_styles.append((item, old_style))
+                else:
+                    new_style = merge_styles(old_style, style, class_)
+                item.attrib['style'] = new_style
+                self._style_to_basic_html_attributes(item, new_style, force=True)
+        return first_time_styles
+
+    def _reapply_initial_styles(self, first_time_styles):
+        # Re-apply initial inline styles.
+        for item, inline_style in first_time_styles:
+            old_style = item.attrib.get('style', '')
+            if not inline_style:
+                continue
+            new_style = merge_styles(old_style, inline_style)
+            item.attrib['style'] = new_style
+            self._style_to_basic_html_attributes(item, new_style, force=True)
+
     def _style_to_basic_html_attributes(self, element, style_content,
                                         force=False):
         """given an element and styles like
@@ -407,6 +374,35 @@ class Premailer(object):
                 continue
             element.attrib[key] = value
 
+    def _remove_classes(self, page):
+        for item in page.xpath('//@class'):
+            parent = item.getparent()
+            del parent.attrib['class']
+
+    def _rewrite_urls(self, page):
+        for attr in ('href', 'src'):
+            for item in page.xpath("//@%s" % attr):
+                parent = item.getparent()
+                if attr == 'href' and self.preserve_internal_links \
+                        and parent.attrib[attr].startswith('#'):
+                            continue
+                if not self.base_url.endswith('/'):
+                    self.base_url += '/'
+                parent.attrib[attr] = urllib.parse.urljoin(self.base_url,
+                        parent.attrib[attr].lstrip('/'))
+
+    def _output(self, stripped, tree, page, pretty_print=True, **kwargs):
+        # lxml inserts a doctype if none exists, so only include it in
+        # the root if it was in the original html.
+        root = tree if stripped.startswith(tree.docinfo.doctype) else page
+        kwargs.setdefault('method', self.method)
+        kwargs.setdefault('pretty_print', pretty_print)
+        out = etree.tostring(root, **kwargs).decode('utf-8')
+        if self.method == 'xml':
+            out = _cdata_regex.sub(lambda m: '/*<![CDATA[*/%s/*]]>*/' % m.group(1), out)
+        if self.strip_important:
+            out = _importants.sub('', out)
+        return out
 
 def transform(html, base_url=None):
     return Premailer(html, base_url=base_url).transform()
