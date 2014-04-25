@@ -300,8 +300,7 @@ class Premailer(object):
         # ordered such that more specific rules sort larger.
         rules.sort(key=operator.itemgetter(0))
 
-        first_time = []
-        first_time_styles = []
+        first_time_styles = {}
         for __, selector, style in rules:
             new_selector = selector
             class_ = ''
@@ -317,15 +316,14 @@ class Premailer(object):
             sel = CSSSelector(selector)
             for item in sel(page):
                 old_style = item.attrib.get('style', '')
-                if not item in first_time:
+                if item not in first_time_styles:
                     new_style = merge_styles(old_style, style, class_)
-                    first_time.append(item)
-                    first_time_styles.append((item, old_style))
+                    first_time_styles[item] = old_style
                 else:
                     new_style = merge_styles(old_style, style, class_)
                 item.attrib['style'] = new_style
                 self._style_to_basic_html_attributes(item, new_style, force=True)
-        return first_time_styles
+        return list(first_time_styles.items())
 
     def _reapply_initial_styles(self, first_time_styles):
         # Re-apply initial inline styles.
